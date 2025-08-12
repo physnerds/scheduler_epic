@@ -1,7 +1,6 @@
 import logging
 import json
 import getpass, os
-
 from itertools import product
 
 #from drich_mobo_simreco import run_func_simreco
@@ -49,19 +48,24 @@ global_parameters = {
     
 }
 
-
+#just keep it like global variable.....
+n_evts_per_job = 100
+n_tot_evts = 200
 # Define your objective function
-def objective_function_step_simreco(parameters, particles, p,eta_point_x, eta_point_y, p_eta_min, p_eta_max, radiator,**kwargs):
+def objective_function_step_simreco(*, particles, p,eta_point_x, eta_point_y, p_eta_min, p_eta_max, radiator,**parameters):
+    import base64,subprocess
     print("start to create xml")
     job_id = "0_0_0"
     create_xml(parameters,job_id)
     p_eta_point = [p,[p_eta_min,p_eta_max],radiator,eta_point_x,eta_point_y]
+    print("Content of the p_eta_points ",p_eta_point)
+    print ("Number of events ",n_evts_per_job)
     output_file_name = "recon_file.root"
     shell_command = [
         "python3", os.path.join(os.environ["AIDE_HOME"], "ProjectUtils/ePICUtils/runTestsAndObjectiveCalc_local_sep_simreco.py"),
-        str(job_id), str(num_particles),
+        str(job_id), str(n_evts_per_job),
         base64.b64encode(bytes(json.dumps(p_eta_point), 'ascii')),
-        particle, output_root_name
+        particles, output_file_name
     ]
     commandout = subprocess.run(shell_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return_code = commandout.returncode
@@ -254,8 +258,8 @@ if __name__ == "__main__":
                 # keys based on the global parameters. Otherwise, all files with different
                 # global parameters will be in the same dataset.
                 "output_dataset": f"{dataset_name_prefix}.simreco.#global_parameter_key.#job_id",
-                "num_events": 200,
-                "num_events_per_job": 100,
+                "num_events": n_tot_evts,
+                "num_events_per_job": n_evts_per_job,
             },
             "ana": {
                 "func": objective_function_step_ana,
@@ -291,5 +295,5 @@ if __name__ == "__main__":
 
     logging.info("running optimization")
     # Run the optimization
-    best_params = scheduler.run_optimization(max_trials=10)
+    best_params = scheduler.run_optimization(max_trials=1)
     print("Best parameters:", best_params)

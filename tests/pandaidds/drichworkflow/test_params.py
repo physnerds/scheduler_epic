@@ -4,7 +4,7 @@ if __name__ == "__main__":
 
     import argparse
     from ProjectUtils.config_editor import *
-
+    from ProjectUtils.ePICUtils.editxml_local import create_xml
     #from ax import SumConstraint
     #from ax import OrderConstraint
     from ax.core.parameter_constraint import ParameterConstraint
@@ -75,7 +75,14 @@ if __name__ == "__main__":
     print("search_space .................")
     print(search_space)
 
-    
+    ## testing the implementation where dictionary is expanded to add the parameters
+    def trial_obj_function(*,eta_point_x, eta_point_y, **parameters):
+        print("=== Trial Function Called ===")
+        for key, value in parameters.items():
+            print(f"{key}: {value}")
+
+
+    trial_obj_function(eta_point_x=3, eta_point_y=4,mirror1_centerx=12.3, mirror1_centery=4.5, radiator=1, p=15)
 
 
     

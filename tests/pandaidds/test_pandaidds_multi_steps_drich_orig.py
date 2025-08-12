@@ -1,8 +1,11 @@
 import logging
 import json
+import getpass, os
 
 from itertools import product
 
+from drichworkflow.drich_mobo_simreco import run_func_simreco
+from drichworkflow.drich_mobo_ana import run_func_analy
 
 # define global parameters. It will generate a list of parameters working together with hyperparameters.
 # For a group of hyperparameters, we may need to evaluate different types of events, then in the final
@@ -12,22 +15,23 @@ from itertools import product
 #  {'eta_points': 0.2, 'particles': 'pi+'},
 #  {'eta_points': 0.2, 'particles': 'kaon+'}]
 global_parameters = {
+    
     "particles": ["pi+", "kaon+"],
-    "eta_points": [0.1, 0.2]
+    #"eta_points": [0.1, 0.2]
+    "p_eta_point" :  [[15, [1.5, 2.0], 0, 0.02457205, 0.00878185]],
+    
 }
 
 
 # Define your objective function
-def objective_function_step_simreco(x, y, particles, eta_points):
-    if particles == "pi+":
-        ret = {"xyz": ((x - 0.5) ** 3 + (y - 0.5) ** 3) * eta_points}
-    elif particles == "kaon+":
-        ret = {"xyz": ((x - 0.5) ** 2 + (y - 0.5) ** 2) * eta_points}
-    else:
-        ret = {"xyz": 0.1}
-
-    with open("my_test.txt", "w") as f:
-        json.dump(ret, f)
+def objective_function_step_simreco( x, y, particles, p_eta_point):
+    job_id = f"{x}_{y}_{particles}_{eta_points}".replace(".", "_")
+    parameters = {"x": x, "y": y}
+    p_eta_point = [15, [1.5, 2.0], 0, eta_points, 0.01]  # dummy, replace as needed
+    return_code = run_func_simreco(parameters, job_id, p_eta_point, particles, num_particles=1500)
+    if return_code != 0:
+        raise RuntimeError(f"simreco job {job_id} failed")
+    return None  # Since output is a file, not a return value
 
 
 def objective_function_step_ana(x, y, particles, eta_points, input_file_names):
@@ -47,19 +51,13 @@ def objective_function_step_ana(x, y, particles, eta_points, input_file_names):
         A dictionary with aggregated (summed) values by key.
     """
     print(f"input_file_names: {input_file_names}")
-    ret = {}
+    result = {}
+    job_id = f"{x}_{y}_{particles}_{eta_points}".replace(".", "_")
+    parameters = {"x": x, "y": y}
+    p_eta_point = [15, [1.5, 2.0], 0, eta_points, 0.01]  # dummy
+    result = run_func_analy(parameters, job_id, p_eta_point, particles, num_particles=1500, input_file_name=input_file_names)
+    return result
 
-    for input_file_name in input_file_names:
-        try:
-            with open(input_file_name, "r") as f:
-                data = json.load(f)
-                for k, v in data.items():
-                    # Assumes v is numeric; otherwise raises an error
-                    ret[k] = ret.get(k, 0) + v
-        except Exception as e:
-            print(f"Error reading file {input_file_name}: {e}")
-
-    return ret
 
 
 def objective_function_step_final(x, y, xyz):
@@ -78,16 +76,44 @@ def objective_function_step_final(x, y, xyz):
 # There is another way to only ship the codes of the objective function to remote sites.
 # However, if this objective function calls some other functions, this way of only shipping
 # the function codes will not work.
+
+def get_user_name():
+    rucio_account = os.environ.get('RUCIO_ACCOUNT', None)
+    if rucio_account:
+        return rucio_account
+
+    username = getpass.getuser()
+    return username
+    
 if __name__ == "__main__":
     # move imports here
     # so the remote execution will not import these libraries
 
+    import argparse
+    from drichworkflow.ProjectUtils.config_editor import *
+    parser = argparse.ArgumentParser(description="Optimization","dRICH")
+    parser.add_argument('-n', '--name', help='workflow name', type=str, default='drich-mobo')
+    parser.add_argument('-c', '--config', 
+                        help='Optimization configuration file', 
+                        type = str, required = True)
+    parser.add_argument('-d', '--detparameters', 
+                        help='Detector parameter configuration file', 
+                        type = str, required = True)
+
+    args = parser.parse_args()
+
+    config = ReadJsonFile(args.config)
+    detconfig = ReadJsonFile(args.detparameters)
+    
     from ax.service.ax_client import AxClient, ObjectiveProperties
     from scheduler import AxScheduler, PanDAiDDSRunner, JobLibRunner
     from scheduler.utils.common import setup_logging
     from scheduler.job.job import JobType
     from scheduler.job.multi_steps_job import MultiStepsFunction
 
+
+    
+    
     setup_logging(log_level="debug")
 
     logging.debug("setup ax client")
@@ -101,16 +127,22 @@ if __name__ == "__main__":
         name="my_experiment",
         parameters=[
             {
-                "name": "x",
-                "type": "range",
-                "bounds": [0.0, 1.0],
-                "value_type": "float",
+                "name":"piKsep_etalow",
+                "type":"range",
+                "bounds":[0.0,2.7],
+                "value_type":"float",
             },
             {
-                "name": "y",
-                "type": "range",
-                "bounds": [0.0, 1.0],
-                "value_type": "float",
+                "name":"piKsep_etahigh",
+                "type":"range",
+                "bounds":[0.0,2.7],
+                "value_type":"float",             
+            },
+            {
+                "name":"acceptance",
+                "type":"range",
+                "bounds":[0.0,0.6],
+                "value_type":"float",                 
             },
         ],
         objectives={"objective": ObjectiveProperties(minimize=True)},
@@ -130,9 +162,9 @@ if __name__ == "__main__":
         "env; "
     ]
     init_env = " ".join(init_env)
-
+    username = get_user_name()
     panda_attrs = {
-        "name": "user.wguan.my_experiment",
+        "name": "user."+username+".my_experiment",
         "init_env": init_env,
         "cloud": "US",
         "queue": "BNL_PanDA_1",  # BNL_OSG_PanDA_1, BNL_PanDA_1
@@ -144,7 +176,7 @@ if __name__ == "__main__":
             "doc*", "DTLZ2*", ".*json", ".*log", "work", "log", "OUTDIR",
             "calibrations", "fieldmaps", "gdml", "EICrecon-drich-mobo",
             "eic-software", "epic-geom-drich-mobo", "irt", "share", "back*",
-            "__pycache__","drichworkflow"
+            "__pycache__"
         ],
         "max_walltime": 3600,
         "core_count": 1,
@@ -153,7 +185,7 @@ if __name__ == "__main__":
         "job_dir": None,
     }
 
-    dataset_name_prefix = "user.wguan.my_experiment"
+    dataset_name_prefix = "user."+username+".drich_mobo_multistep" #"user.wguan.my_experiment"
 
     # Create a runner
     runner = PanDAiDDSRunner(**panda_attrs)
@@ -168,7 +200,7 @@ if __name__ == "__main__":
     objective_function = MultiStepsFunction(
         objective_funcs={
             "simreco": {
-                "func": objective_function_step_simreco,
+                "func": objective_functionrun_func_simreco, #objective_function_step_simreco,
                 "job_type": JobType.FUNCTION,
                 "runner": panda_idds_runner,
                 "return_func_results": False,    # here the outputs are in dataset, so no need to wait for function outputs
@@ -180,7 +212,7 @@ if __name__ == "__main__":
                 # global parameters will be in the same dataset.
                 "output_dataset": f"{dataset_name_prefix}.simreco.#global_parameter_key.#job_id",
                 "num_events": 200,
-                "num_events_per_job": 100,
+                "num_events_per_job": 200,
             },
             "ana": {
                 "func": objective_function_step_ana,

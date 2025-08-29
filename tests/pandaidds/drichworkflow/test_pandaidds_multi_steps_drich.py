@@ -43,7 +43,7 @@ global_parameters = {
     "eta_point_y": [0.00878185],
     "p_eta_min": [1.5],
     "p_eta_max": [2.0],
-    "radiator": [0,1]
+    "radiator": [0] #could be 0 or 1
     #p_eta_point: [0, 0.02457205, 0.00878185],
     
 }
@@ -114,7 +114,7 @@ def objective_function_step_ana(*, particles, p, eta_point_x, eta_point_y, p_eta
                     "ProjectUtils/ePICUtils/runTestsAndObjectiveCalc_local_sep_analy.py"),
         str(job_id), str(num_particles),
         base64.b64encode(bytes(json.dumps(p_eta_point), 'ascii')),
-        particles, "", jfilename
+        particles, " ", jfilename
     ]
     print("shell Command ",shell_command)
     commandout = subprocess.run(shell_command,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -122,9 +122,9 @@ def objective_function_step_ana(*, particles, p, eta_point_x, eta_point_y, p_eta
     output = commandout.stdout.decode('utf-8') if commandout.stdout else ""
     error = commandout.stderr.decode('utf-8') if commandout.stderr else ""
 
-    print(f"Return code: {return_code}")
-    print(f"stdout:\n{output}")
-    print(f"stderr:\n{error}")
+    print(f"ana func Return code: {return_code}")
+    print(f"ana func stdout:\n{output}")
+    print(f"ana func stderr:\n{error}")
     
     if return_code!=0:
         print("Analysis step failed")
@@ -136,7 +136,7 @@ def objective_function_step_ana(*, particles, p, eta_point_x, eta_point_y, p_eta
 
 
 def objective_function_step_final(*,results,**parameters):
-    # print(f"global_parameters: {global_parameters}")
+    print(f"global_parameters: {global_parameters}")
     return results
     #return {"objective": (x - 0.5) ** 2 + (y - 0.5) ** 2 + xyz_sum * 0.1}
 

@@ -92,31 +92,50 @@ def objective_function_step_simreco(parameters, particles, p,eta_point_x, eta_po
         json.dump(return_code,f)
 
 """
-def objective_function_step_ana(parameters, particles, p, eta_point_x, eta_point_y, p_eta_min, p_eta_max, radiator, input_file_names):
-    """
-    Aggregates values from multiple JSON files.
+def objective_function_step_ana(*, particles, p, eta_point_x, eta_point_y, p_eta_min, p_eta_max, radiator, input_file_names,**parameters):
+    import base64
+    import numpy as np
+    import subprocess
+    
+    p_eta_point = [p,[p_eta_min,p_eta_max],radiator,eta_point_x,eta_point_y]
+    jfilename = "input_files.json"
+    job_id = "0_0_0"
+    num_particles = n_evts_per_job
+    with open(jfilename,"w") as f:
+        json.dump({"input_files":input_file_names},f)
+        
+    # read the json content back to make sure it has proper information
+    with open(jfilename,"r") as f:
+        j_data = json.load(f)
+    print("Printing the json content from objective_function_step_ana ",j_data)
+    
+    shell_command = [
+        "python3", os.path.join(os.environ["AIDE_HOME"],
+                    "ProjectUtils/ePICUtils/runTestsAndObjectiveCalc_local_sep_analy.py"),
+        str(job_id), str(num_particles),
+        base64.b64encode(bytes(json.dumps(p_eta_point), 'ascii')),
+        particles, "", jfilename
+    ]
+    print("shell Command ",shell_command)
+    commandout = subprocess.run(shell_command,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return_code = commandout.returncode
+    output = commandout.stdout.decode('utf-8') if commandout.stdout else ""
+    error = commandout.stderr.decode('utf-8') if commandout.stderr else ""
 
-    Each JSON file should contain a flat dictionary with numerical values.
-    Repeated keys will have their values summed across files.
+    print(f"Return code: {return_code}")
+    print(f"stdout:\n{output}")
+    print(f"stderr:\n{error}")
+    
+    if return_code!=0:
+        print("Analysis step failed")
 
-    Args:
-        x, y: numeric values (e.g., coordinates or hyperparameters)
-        particles: list or string of particles (unused here but likely part of parameter space)
-        eta_points: list or float (same)
-        input_file_names: list of file paths to load
-
-    Returns:
-        A dictionary with aggregated (summed) values by key.
-    """
-    print(f"input_file_names: {input_file_names}")
-    result = {}
-    job_id = f"{eta_point_x}_{eta_point_y}_{particles}_{eta_points}".replace(".", "_")
-    result = run_func_analy(parameters, job_id, p, eta_point_x, eta_point_y, p_eta_min,p_eta_max,radiator, particles, num_particles=1500, input_file_name=input_file_names)
-    return result
+    path = os.path.join(os.environ["AIDE_WORKDIR"], "log/results", f"drich-mobo-out_{job_id}.npz")
+    results = np.load(path, allow_pickle=True)
+    return {k: results[k].tolist() for k in results}
+    
 
 
-
-def objective_function_step_final(parameters,results):
+def objective_function_step_final(*,results,**parameters):
     # print(f"global_parameters: {global_parameters}")
     return results
     #return {"objective": (x - 0.5) ** 2 + (y - 0.5) ** 2 + xyz_sum * 0.1}
@@ -277,7 +296,7 @@ if __name__ == "__main__":
                 "func": objective_function_step_final,
                 "job_type": JobType.FUNCTION,
                 "runner": JobLibRunner(n_jobs=-1),
-                "parent_result_parameter_name": "xyz",      # will add a parameter xyz=<get_parent_results> to the func
+                "parent_result_parameter_name": "results",      # will add a parameter xyz=<get_parent_results> to the func
             },
         },
         deps={

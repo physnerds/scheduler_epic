@@ -82,21 +82,11 @@ def objective_function_step_simreco(*, particles, p,eta_point_x, eta_point_y, p_
         print("Simulation/Reconstruction step succeeded.")
     
     
-
-"""
-def objective_function_step_simreco(parameters, particles, p,eta_point_x, eta_point_y, p_eta_min, p_eta_max, radiator):
-    job_id = f"{eta_point_x}_{eta_point_y}_{particles}_{eta_points}".replace(".", "_")
-    return_code = run_func_simreco(parameters, job_id, p, eta_point_x, eta_point_y, p_eta_min, p_eta_max, radiator, eta_point_x, eta_point_y, particles, num_particles=1500)
-
-    with open("my_test.txt","w") as f:
-        json.dump(return_code,f)
-
-"""
 def objective_function_step_ana(*, particles, p, eta_point_x, eta_point_y, p_eta_min, p_eta_max, radiator, input_file_names,**parameters):
     import base64
     import numpy as np
     import subprocess
-    
+    ret = {}
     p_eta_point = [p,[p_eta_min,p_eta_max],radiator,eta_point_x,eta_point_y]
     jfilename = "input_files.json"
     job_id = "0_0_0"
@@ -131,13 +121,17 @@ def objective_function_step_ana(*, particles, p, eta_point_x, eta_point_y, p_eta
 
     path = os.path.join(os.environ["AIDE_WORKDIR"], "log/results", f"drich-mobo-out_{job_id}.npz")
     results = np.load(path, allow_pickle=True)
-    return {k: results[k].tolist() for k in results}
+    print(f"objective_function_step_ana: results:: {results}") 
+    ret = {k: results[k].tolist() for k in results}
+    print(f"objective_function_step_ana: ret:: {ret}")
+    return ret
     
 
 
-def objective_function_step_final(*,results,**parameters):
-    print(f"global_parameters: {global_parameters}")
-    return results
+def objective_function_step_final(*,ret,**parameters):
+    print(f"step_final global_parameters: {global_parameters}")
+    print(f"step_final results :{ret}")
+    return ret
     #return {"objective": (x - 0.5) ** 2 + (y - 0.5) ** 2 + xyz_sum * 0.1}
 
 
@@ -296,7 +290,7 @@ if __name__ == "__main__":
                 "func": objective_function_step_final,
                 "job_type": JobType.FUNCTION,
                 "runner": JobLibRunner(n_jobs=-1),
-                "parent_result_parameter_name": "results",      # will add a parameter xyz=<get_parent_results> to the func
+                "parent_result_parameter_name": "ret",      # will add a parameter xyz=<get_parent_results> to the func
             },
         },
         deps={

@@ -124,7 +124,7 @@ def objective_function_step_ana(*, particles, p, eta_point_x, eta_point_y, p_eta
     print(f"objective_function_step_ana: results:: {results}") 
     ret = {k: results[k].tolist() for k in results}
     print(f"objective_function_step_ana: ret:: {ret}")
-    return ret
+    return {"ret":ret} # Need the dictionary key "ret" defined in the dependency graph
     
 
 

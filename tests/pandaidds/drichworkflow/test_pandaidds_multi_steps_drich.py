@@ -124,15 +124,20 @@ def objective_function_step_ana(*, particles, p, eta_point_x, eta_point_y, p_eta
     print(f"objective_function_step_ana: results:: {results}") 
     ret = {k: results[k].tolist() for k in results}
     print(f"objective_function_step_ana: ret:: {ret}")
-    return {"ret":ret} # Need the dictionary key "ret" defined in the dependency graph
+    return {"ret":ret} # Need the dictionary key "ret" that is defined in the dependency graph
     
 
 
 def objective_function_step_final(*,ret,**parameters):
     print(f"step_final global_parameters: {global_parameters}")
     print(f"step_final results :{ret}")
-    return ret
-    #return {"objective": (x - 0.5) ** 2 + (y - 0.5) ** 2 + xyz_sum * 0.1}
+    obj_val = []
+    for result_dict in ret.values():
+        for k,v in result_dict.items():
+            if k.startswith('plus_cher'):
+                obj_val = v
+    # 4th item in the list is acceptance which we want to maximize....
+    return {"objective": obj_val[3]}
 
 
 # This file will be imported to load the objective function at remote sites in PanDA
@@ -202,7 +207,7 @@ if __name__ == "__main__":
     ax_client.create_experiment(
         name="drich_mobo_multistep",
         parameters=search_space,
-        objectives={"objective": ObjectiveProperties(minimize=True)},
+        objectives={"objective": ObjectiveProperties(minimize=False)}, # I think we want to maximize the acceptance
     )
 
     logging.info("defining objectives")

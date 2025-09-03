@@ -2,14 +2,15 @@ import logging
 import json
 import getpass, os
 from itertools import product
-
-#from drich_mobo_simreco import run_func_simreco
+import sys,argparse
 from ProjectUtils.ePICUtils.editxml_local import create_xml
 
 from drich_mobo_ana import run_func_analy
 
 from ax.core.parameter_constraint import ParameterConstraint
 from ax.core.parameter import RangeParameter,ParameterType
+
+
 
 def constraint_ax(constraints,parameters):
     # constraint_dict: Dict[str,float], bound: float
@@ -48,9 +49,16 @@ global_parameters = {
     
 }
 
-#just keep it like global variable.....
-n_evts_per_job = 100
-n_tot_evts = 200
+#Make them hyper-parameter arguments..but only these two...
+n_evts_per_job = 500
+n_tot_evts = 1000
+
+for i, arg in enumerate(sys.argv):
+    if arg == "--n_tot_jobs" and i+1 < len(sys.argv):
+        n_tot_jobs=int(sys.argv[i+1])
+    if arg == "--n_evts_per_job" and i+1<len(sys.argv):
+        n_evts_per_job = float(sys.argv[i+1])
+
 # Define your objective function
 def objective_function_step_simreco(*, particles, p,eta_point_x, eta_point_y, p_eta_min, p_eta_max, radiator,**parameters):
     import base64,subprocess
@@ -157,8 +165,6 @@ def get_user_name():
 if __name__ == "__main__":
     # move imports here
     # so the remote execution will not import these libraries
-
-    import argparse
     from ProjectUtils.config_editor import *
     
     parser = argparse.ArgumentParser(description="Optimization, dRICH")
@@ -169,13 +175,23 @@ if __name__ == "__main__":
     parser.add_argument('-d', '--detparameters', 
                         help='Detector parameter configuration file', 
                         type = str, required = True)
+    parser.add_argument("--objectives",type=int,default=4,help="Number of Objectives")
+    parser.add_argument("--trials",type=int, default=20, help="Number of trials")
+    parser.add_argument("--queue",type=str,default="BNL_PanDA_1",help="PanDA queue")
+    
+    
 
     args = parser.parse_args()
-
     config = ReadJsonFile(args.config)
     detconfig = ReadJsonFile(args.detparameters)
-    
+    num_trials = args.trials
+    exp_name = args.name
+    queue = args.queue
+    num_obj = args.objectives
+
     from ax.service.ax_client import AxClient, ObjectiveProperties
+    from ax.modelbridge.registry import Generators
+    from ax.modelbridge.generation_strategy import GenerationStrategy, GenerationStep
     from scheduler import AxScheduler, PanDAiDDSRunner, JobLibRunner
     from scheduler.utils.common import setup_logging
     from scheduler.job.job import JobType
@@ -194,18 +210,25 @@ if __name__ == "__main__":
     }
     for name in detconfig["parameters"]
     ]
-    
+
+
     setup_logging(log_level="debug")
 
     logging.debug("setup ax client")
     # Initialize Ax client
-    ax_client = AxClient()
+    generation_strategy = GenerationStrategy(
+        steps=[
+             GenerationStep(model=Generators.SOBOL, num_trials=5, min_trials_observed=3, max_parallelism=5),
+            GenerationStep(model=Generators.BOTORCH_MODULAR, num_trials=-1, max_parallelism=5),       
+        ]
+    )
+    ax_client = AxClient(generation_strategy=generation_strategy)
 
     logging.info("Creating experiment")
-
+    
     # Define your parameter space
     ax_client.create_experiment(
-        name="drich_mobo_multistep",
+        name=exp_name,
         parameters=search_space,
         objectives={"objective": ObjectiveProperties(minimize=False)}, # I think we want to maximize the acceptance
     )
@@ -232,7 +255,7 @@ if __name__ == "__main__":
         "name": dataset_name_prefix,
         "init_env": init_env,
         "cloud": "US",
-        "queue": "BNL_PanDA_1",  # BNL_OSG_PanDA_1, BNL_PanDA_1
+        "queue": queue,  # BNL_OSG_PanDA_1, BNL_PanDA_1
         "source_dir": None,  # used to upload files in the source directory to PanDA, which will be used for the remote jobs.
                              # None is the current directory.
         "source_dir_parent_level": 1,
@@ -256,9 +279,6 @@ if __name__ == "__main__":
     runner = PanDAiDDSRunner(**panda_attrs)
     logging.info(f"created runner: {runner}")
 
-    # Create the scheduler
-    scheduler = AxScheduler(ax_client, runner)
-    logging.info(f"created scheduler: {scheduler}")
 
     panda_idds_runner = PanDAiDDSRunner(**panda_attrs)
 
@@ -308,10 +328,22 @@ if __name__ == "__main__":
                           # The final step will set its result as the job's result
     )
 
+    config = {
+        "max_concurrent_trials": 10,
+        "early_stopping_threshold": None,
+        "early_stopping_begin_at": 0,
+        "restart_from_checkpoint": True,
+        "work_dir": "./work",
+        "checkpoint_name": None,    # will use experiment name
+
+    }
+    # Create the scheduler
+    scheduler = AxScheduler(ax_client, runner, config=config)
+    logging.info(f"created scheduler: {scheduler}")
     # Set the objective function
     scheduler.set_objective_function(objective_function)
 
     logging.info("running optimization")
     # Run the optimization
-    best_params = scheduler.run_optimization(max_trials=1)
+    best_params = scheduler.run_optimization(max_trials=num_trials)
     print("Best parameters:", best_params)

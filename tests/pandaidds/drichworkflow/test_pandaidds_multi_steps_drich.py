@@ -37,7 +37,7 @@ def constraint_ax(constraints,parameters):
 #  {'eta_points': 0.2, 'particles': 'kaon+'}]
 global_parameters = {
     
-    "particles": ["pi+"],
+    "particles": ["pi+","kaon+"],
     #"eta_points": [0.1, 0.2]
     "p": [15], 
     "eta_point_x": [0.02457205],
@@ -54,7 +54,7 @@ n_evts_per_job = 500
 n_tot_evts = 1000
 
 for i, arg in enumerate(sys.argv):
-    if arg == "--n_tot_jobs" and i+1 < len(sys.argv):
+    if arg == "--n_tot_evts" and i+1 < len(sys.argv):
         n_tot_jobs=int(sys.argv[i+1])
     if arg == "--n_evts_per_job" and i+1<len(sys.argv):
         n_evts_per_job = float(sys.argv[i+1])
@@ -143,9 +143,11 @@ def objective_function_step_final(*,ret,**parameters):
     for result_dict in ret.values():
         for k,v in result_dict.items():
             if k.startswith('plus_cher'):
-                obj_val = v
+                obj_val.append(v)
     # 4th item in the list is acceptance which we want to maximize....
-    return {"objective": obj_val[3]}
+    tot_acc = [_val[3] for _val in obj_val]
+    avg_acc = sum(tot_acc)/len(tot_acc)
+    return {"objective": avg_acc}
 
 
 # This file will be imported to load the objective function at remote sites in PanDA
@@ -181,7 +183,7 @@ if __name__ == "__main__":
     
     
 
-    args = parser.parse_args()
+    args, others = parser.parse_known_args()
     config = ReadJsonFile(args.config)
     detconfig = ReadJsonFile(args.detparameters)
     num_trials = args.trials

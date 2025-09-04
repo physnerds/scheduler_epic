@@ -25,15 +25,14 @@ cd scheduler_epic/tests/pandaidds/drichworkflow
 ## Suggested Rough structure of directory
 
 drichworkflow
- --test_pandaidds_multi_steps.drich.py
- -- optimize_dev.config
- -- parameters.config
- -- ProjectUtils (from the dRICHMOBO project)
-    -- ePICUtils (from the dRICHMOBO project)
-    -- runTestsAndObjectiveCalc_local_sep_analy.py (from this project)
-    -- runTestsAndObjectiveCalc_local_sep_simreco.py (from this project)
-    -- Everything Else (from dRICHMOBO project)
-
+ --test_pandaidds_multi_steps.drich.py \
+ -- optimize_dev.config  \
+ -- parameters.config  \
+ -- ProjectUtils (from the dRICHMOBO project) \
+    -- ePICUtils (from the dRICHMOBO project) \
+    -- runTestsAndObjectiveCalc_local_sep_analy.py (from this project) \
+    -- runTestsAndObjectiveCalc_local_sep_simreco.py (from this project) \
+    -- Everything Else (from dRICHMOBO project) 
 
 ## Running instructions
 To run the optimiztion with 50 trials, 1000 total events with 2 sim-reco jobs of 500 events each for example:

@@ -24,14 +24,14 @@ cd scheduler_epic/tests/pandaidds/drichworkflow
 
 ## Suggested Rough structure of directory
 ```bash
-drichworkflow \
- --test_pandaidds_multi_steps.drich.py \
- -- optimize_dev.config  \
- -- parameters.config  \
- -- ProjectUtils (from the dRICHMOBO project) \
-    -- ePICUtils (from the dRICHMOBO project) \
-    -- runTestsAndObjectiveCalc_local_sep_analy.py (from this project) \
-    -- runTestsAndObjectiveCalc_local_sep_simreco.py (from this project) \
+drichworkflow 
+ --test_pandaidds_multi_steps.drich.py 
+ -- optimize_dev.config  
+ -- parameters.config  
+ -- ProjectUtils (from the dRICHMOBO project) 
+    -- ePICUtils (from the dRICHMOBO project) 
+    -- runTestsAndObjectiveCalc_local_sep_analy.py (from this project) 
+    -- runTestsAndObjectiveCalc_local_sep_simreco.py (from this project) 
     -- Everything Else (from dRICHMOBO project) 
 ```
 ## Running instructions

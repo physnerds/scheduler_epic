@@ -127,7 +127,7 @@ class SubJobManager:
                     
                 
                 plus_cher = np.loadtxt(scan_path)
-                key = f"plus_cher_{i}_{particle}_{}"
+                key = f"plus_cher_{i}_{particle}"
                 self.final_job_result[key] = np.asarray(plus_cher)
 
         logging.info(f"SubJobManager saving results to {self.output_name}: {self.final_job_result}")

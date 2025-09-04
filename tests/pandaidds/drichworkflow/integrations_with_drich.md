@@ -24,7 +24,7 @@ cd scheduler_epic/tests/pandaidds/drichworkflow
 
 ## Suggested Rough structure of directory
 
-drichworkflow
+drichworkflow \
  --test_pandaidds_multi_steps.drich.py \
  -- optimize_dev.config  \
  -- parameters.config  \

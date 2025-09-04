@@ -23,7 +23,7 @@ cd scheduler_epic/tests/pandaidds/drichworkflow
 6. Download the dRICH-MOBO (panda-idds branch) inside the *drichworflow directory* directory.
 
 ## Suggested Rough structure of directory
-
+```bash
 drichworkflow \
  --test_pandaidds_multi_steps.drich.py \
  -- optimize_dev.config  \
@@ -33,7 +33,7 @@ drichworkflow \
     -- runTestsAndObjectiveCalc_local_sep_analy.py (from this project) \
     -- runTestsAndObjectiveCalc_local_sep_simreco.py (from this project) \
     -- Everything Else (from dRICHMOBO project) 
-
+```
 ## Running instructions
 To run the optimiztion with 50 trials, 1000 total events with 2 sim-reco jobs of 500 events each for example:
 

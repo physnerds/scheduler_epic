@@ -35,29 +35,55 @@ def constraint_ax(constraints,parameters):
 #  {'eta_points': 0.1, 'particles': 'kaon+'},
 #  {'eta_points': 0.2, 'particles': 'pi+'},
 #  {'eta_points': 0.2, 'particles': 'kaon+'}]
+
 global_parameters = {
     
     "particles": ["pi+","kaon+"],
     #"eta_points": [0.1, 0.2]
-    "p": [15], 
+    "p": [15,45], 
     "eta_point_x": [0.02457205],
     "eta_point_y": [0.00878185],
-    "p_eta_min": [1.5],
-    "p_eta_max": [2.0],
-    "radiator": [0] #could be 0 or 1
+    "p_eta_min": [1.5,2.0,2.5,3.0],
+    "p_eta_max": [2.0,2.5,3.0,3.5],
+    "radiator": [0,1] #could be 0 or 1
     #p_eta_point: [0, 0.02457205, 0.00878185],
     
 }
 
-#Make them hyper-parameter arguments..but only these two...
-n_evts_per_job = 500
-n_tot_evts = 1000
+def selected_global_parameters(global_parameters):
+    jobs = []
+    for p in global_parameters["p"]:
+        if p==15:
+            particles_list = ["pi+"]
+            p_eta_min_list = [1.5,2.0]
+            p_eta_max_list = [2.0,2.5]
+            radiator_list = [0]
+        elif p==45:
+            particles_list = ["kaon+"]
+            p_eta_min_list = [2.5,3.0]
+            p_eta_max_list = [3.0,3.5]
+            radiator_list = [1]
+        else:
+            continue
+        for particles in particles_list:
+            for eta_point_x in global_parameters["eta_point_x"]:
+                for eta_point_y in global_parameters["eta_point_y"]:
+                    for p_eta_min in p_eta_min_list:
+                        for radiator in radiator_list:
+                            jobs.append({
+                                "particles": particles,
+                                "p": p,
+                                "eta_point_x": eta_point_x,
+                                "eta_point_y": eta_point_y,
+                                "p_eta_min": p_eta_min,
+                                "p_eta_max": p_eta_min+0.5,
+                                "radiator": radiator,
+                            })
+    return jobs
 
-for i, arg in enumerate(sys.argv):
-    if arg == "--n_tot_evts" and i+1 < len(sys.argv):
-        n_tot_jobs=int(sys.argv[i+1])
-    if arg == "--n_evts_per_job" and i+1<len(sys.argv):
-        n_evts_per_job = float(sys.argv[i+1])
+#These are also some sort of global parameters....
+n_evts_per_job = 500
+n_tot_evts = 2000
 
 # Define your objective function
 def objective_function_step_simreco(*, particles, p,eta_point_x, eta_point_y, p_eta_min, p_eta_max, radiator,**parameters):
@@ -66,8 +92,9 @@ def objective_function_step_simreco(*, particles, p,eta_point_x, eta_point_y, p_
     job_id = "0_0_0"
     create_xml(parameters,job_id)
     p_eta_point = [p,[p_eta_min,p_eta_max],radiator,eta_point_x,eta_point_y]
-    print("Content of the p_eta_points ",p_eta_point)
-    print ("Number of events ",n_evts_per_job)
+    #print ("Number of events ",n_evts_per_job)
+    print(f"Total events {n_evts_per_job}, Events processed in this job {n_tot_evts}")
+    
     output_file_name = "recon_file.root"
     shell_command = [
         "python3", os.path.join(os.environ["AIDE_HOME"], "ProjectUtils/ePICUtils/runTestsAndObjectiveCalc_local_sep_simreco.py"),
@@ -136,6 +163,7 @@ def objective_function_step_ana(*, particles, p, eta_point_x, eta_point_y, p_eta
     
 
 
+"""
 def objective_function_step_final(*,ret,**parameters):
     print(f"step_final global_parameters: {global_parameters}")
     print(f"step_final results :{ret}")
@@ -149,12 +177,59 @@ def objective_function_step_final(*,ret,**parameters):
     avg_acc = sum(tot_acc)/len(tot_acc)
     return {"objective": avg_acc}
 
+"""
 
-# This file will be imported to load the objective function at remote sites in PanDA
-# to avoid excuting the whole file, __name__ == "__main__" must be used.
-# There is another way to only ship the codes of the objective function to remote sites.
-# However, if this objective function calls some other functions, this way of only shipping
-# the function codes will not work.
+def objective_function_step_final(*,ret,**parameters):
+    
+    import math
+    print(f"step_final global_parameters: {global_parameters}")
+    print(f"step_final results :{ret}")
+    obj_pi = []
+    obj_kaon = []
+    
+    for result_dict in ret.values():
+        for k,v in result_dict.items():
+            if not k.startswith("plus_cher"):
+                continue
+            if k.endswith("pi+"):
+                obj_pi.append(v)
+            elif k.endswith("kaon+"):
+                obj_kaon.append(v)
+
+    def obj_stats(values):
+        if not values:
+            return{
+                "avg_acc":0,
+                "avg_photons":0,
+                "avg_angles":0,
+                "avg_mae":1.0,
+            }
+        acc = [x[3] for x in values]
+        photons = [x[0] for x in values]
+        angles = [x[1] for x in values]
+        err_angles = [x[2] for x in values]
+
+        return{
+            "avg_acc": sum(acc)/len(acc),
+            "avg_photons":sum(photons)/len(photons),
+            "avg_angles":sum(angles)/len(angles),
+            "avg_mae":sum(err_angles)/len(err_angles),
+        }
+
+    pi_stats = obj_stats(obj_pi)
+    k_stats = obj_stats(obj_kaon)
+
+    cher_diff = abs((pi_stats["avg_angles"]-k_stats["avg_angles"])) / 2.0
+    avg_photons = (pi_stats["avg_photons"]+k_stats["avg_photons"]) / 2.0
+    avg_mae = (pi_stats["avg_mae"]+k_stats["avg_mae"]) / 2.0
+    
+    final_piksep = cher_diff*(math.sqrt(avg_photons)) / (avg_mae if avg_mae!=0 else 1.0)
+    final_acc = (pi_stats["avg_acc"]+k_stats["avg_acc"]) / 2.0
+        
+    return {"obj_acc": final_acc,
+            "obj_piksep":final_piksep
+           }
+
 
 def get_user_name():
     rucio_account = os.environ.get('RUCIO_ACCOUNT', None)
@@ -180,16 +255,15 @@ if __name__ == "__main__":
     parser.add_argument("--objectives",type=int,default=4,help="Number of Objectives")
     parser.add_argument("--trials",type=int, default=20, help="Number of trials")
     parser.add_argument("--queue",type=str,default="BNL_PanDA_1",help="PanDA queue")
-    
-    
-
-    args, others = parser.parse_known_args()
+        
+    args = parser.parse_args()
     config = ReadJsonFile(args.config)
     detconfig = ReadJsonFile(args.detparameters)
     num_trials = args.trials
     exp_name = args.name
     queue = args.queue
     num_obj = args.objectives
+
 
     from ax.service.ax_client import AxClient, ObjectiveProperties
     from ax.modelbridge.registry import Generators
@@ -232,7 +306,10 @@ if __name__ == "__main__":
     ax_client.create_experiment(
         name=exp_name,
         parameters=search_space,
-        objectives={"objective": ObjectiveProperties(minimize=False)}, # I think we want to maximize the acceptance
+        #objectives={"objective": ObjectiveProperties(minimize=False)}, # I think we want to maximize the acceptance
+        objectives={"obj_acc": ObjectiveProperties(minimize=False),
+                    "obj_piksep":ObjectiveProperties(minimize=False)
+                   },
     )
 
     logging.info("defining objectives")
@@ -283,7 +360,8 @@ if __name__ == "__main__":
 
 
     panda_idds_runner = PanDAiDDSRunner(**panda_attrs)
-
+    #Because eta_min and eta_max angles have different combinations of radiator, p_eta_min/max and p
+    filtered_global_parameters = selected_global_parameters(global_parameters)
     objective_function = MultiStepsFunction(
         objective_funcs={
             "simreco": {
@@ -324,7 +402,8 @@ if __name__ == "__main__":
             "final": {"parent": "ana", "dep_type": "results", "dep_map": "all2one"},
             "ana": {"parent": "simreco", "dep_type": "datasets", "dep_map": "one2one"},    # depends on the dataset. It will use rucio to manage the datasets.
         },
-        global_parameters=global_parameters,
+        #global_parameters=global_parameters,
+        global_parameters=filtered_global_parameters,
         global_parameters_steps=["simreco", "ana"],
         final="final",    # if final is not set, it will use the last step in objective_funcs.
                           # The final step will set its result as the job's result

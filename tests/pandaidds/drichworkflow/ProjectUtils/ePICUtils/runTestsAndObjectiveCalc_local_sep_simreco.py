@@ -234,8 +234,13 @@ class SubJobManager:
         # TODO: is this how we want to treat this?
         final_results = np.array([0, 0, 0, 0, 0, 0])
         np.savetxt(self.output_name, final_results)
+        # we want to create a dummpy ROOT file
         return
 
+    def createDummyOutput(self):
+        #Create a dummy file with the output_root_name
+        open(self.output_root_name,"w").close()
+    
     def write_status_code(self, status_code):
         with open(self.status_name, 'w') as f:
             f.write(str(status_code))
@@ -321,10 +326,11 @@ def run(jobid, npart, p_eta_point, particle, output_name):
     #noverlaps = 1
     if noverlaps != 0:
         # OVERLAP OR ERROR, return -1 for all objectives
-        logging.info(f"noverlaps: {noverlaps}, overlaps found, exiting trial")
+        logging.info(f"noverlaps: {noverlaps}, overlaps found, Create a dummy file and exit trial")
         # results = np.array([-1 for i in range(len(p_eta_scan))])
         # np.savetxt(manager.output_name, results)
-        manager.writeFailedObjectives()
+        #manager.writeFailedObjectives()
+        manager.createDummyOutput()
         sys.exit(0)
 
     logging.info("no overlaps, starting momentum/eta scan jobs")
@@ -336,8 +342,9 @@ def run(jobid, npart, p_eta_point, particle, output_name):
     if num_done < total:
         # manager.writeFailedObjectives()
         manager.write_status_code(1)
-        sys.exit(1)
         logging.info("some job failed, flag as failure")
+        manager.createDummyOutput()
+        sys.exit(1)
     else:
         # manager.retrieveResults()
         logging.info("successfully retrieved results")

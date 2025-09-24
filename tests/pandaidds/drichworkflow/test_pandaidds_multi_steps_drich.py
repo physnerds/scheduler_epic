@@ -82,8 +82,8 @@ def selected_global_parameters(global_parameters):
     return jobs
 
 #These are also some sort of global parameters....
-n_evts_per_job = 500
-n_tot_evts = 2000
+n_evts_per_job = 1000
+n_tot_evts = 5000
 
 # Define your objective function
 def objective_function_step_simreco(*, particles, p,eta_point_x, eta_point_y, p_eta_min, p_eta_max, radiator,**parameters):
@@ -133,33 +133,50 @@ def objective_function_step_ana(*, particles, p, eta_point_x, eta_point_y, p_eta
     with open(jfilename,"r") as f:
         j_data = json.load(f)
     print("Printing the json content from objective_function_step_ana ",j_data)
-    
-    shell_command = [
-        "python3", os.path.join(os.environ["AIDE_HOME"],
-                    "ProjectUtils/ePICUtils/runTestsAndObjectiveCalc_local_sep_analy.py"),
-        str(job_id), str(num_particles),
-        base64.b64encode(bytes(json.dumps(p_eta_point), 'ascii')),
-        particles, " ", jfilename
-    ]
-    print("shell Command ",shell_command)
-    commandout = subprocess.run(shell_command,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return_code = commandout.returncode
-    output = commandout.stdout.decode('utf-8') if commandout.stdout else ""
-    error = commandout.stderr.decode('utf-8') if commandout.stderr else ""
 
-    print(f"ana func Return code: {return_code}")
-    print(f"ana func stdout:\n{output}")
-    print(f"ana func stderr:\n{error}")
-    
-    if return_code!=0:
-        print("Analysis step failed")
+    # if the sim reco stage failed (overlaps found), then you get a dummy file
+    file_empty=False
+    for file_path in j_data.get("input_files",[]):
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            if os.path.getsize(file_path)==0:
+                print(f"Warning: The file {file_path} is empty probably because the overlap check failed in the simreco stage")
+                file_empty = True
+        else:
+            print(f"Warning: The file {file_path} does not exist. Something went wrong in simreco stage")
+            file_empty = True
 
-    path = os.path.join(os.environ["AIDE_WORKDIR"], "log/results", f"drich-mobo-out_{job_id}.npz")
-    results = np.load(path, allow_pickle=True)
-    print(f"objective_function_step_ana: results:: {results}") 
-    ret = {k: results[k].tolist() for k in results}
-    print(f"objective_function_step_ana: ret:: {ret}")
-    return {"ret":ret} # Need the dictionary key "ret" that is defined in the dependency graph
+    if file_empty:
+        print(f"One or all input files in {j_data} are empty")
+        ret = {f"plus_cher_0_{particles}": [0.0, 0.0, 0.0, 0.0]}
+        print(f"Dummy return value {ret}")
+        return {"ret":ret}
+    else:
+        shell_command = [
+            "python3", os.path.join(os.environ["AIDE_HOME"],
+                        "ProjectUtils/ePICUtils/runTestsAndObjectiveCalc_local_sep_analy.py"),
+            str(job_id), str(num_particles),
+            base64.b64encode(bytes(json.dumps(p_eta_point), 'ascii')),
+            particles, " ", jfilename
+        ]
+        print("shell Command ",shell_command)
+        commandout = subprocess.run(shell_command,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return_code = commandout.returncode
+        output = commandout.stdout.decode('utf-8') if commandout.stdout else ""
+        error = commandout.stderr.decode('utf-8') if commandout.stderr else ""
+    
+        print(f"ana func Return code: {return_code}")
+        print(f"ana func stdout:\n{output}")
+        print(f"ana func stderr:\n{error}")
+        
+        if return_code!=0:
+            print("Analysis step failed")
+    
+        path = os.path.join(os.environ["AIDE_WORKDIR"], "log/results", f"drich-mobo-out_{job_id}.npz")
+        results = np.load(path, allow_pickle=True)
+        print(f"objective_function_step_ana: results:: {results}") 
+        ret = {k: results[k].tolist() for k in results}
+        print(f"objective_function_step_ana: ret:: {ret}")
+        return {"ret":ret} # Need the dictionary key "ret" that is defined in the dependency graph
     
 
 
@@ -226,8 +243,8 @@ def objective_function_step_final(*,ret,**parameters):
     final_piksep = cher_diff*(math.sqrt(avg_photons)) / (avg_mae if avg_mae!=0 else 1.0)
     final_acc = (pi_stats["avg_acc"]+k_stats["avg_acc"]) / 2.0
         
-    return {"obj_acc": final_acc,
-            "obj_piksep":final_piksep
+    return {"obj_acc": float(final_acc),
+            "obj_piksep": float(final_piksep)
            }
 
 
@@ -252,9 +269,9 @@ if __name__ == "__main__":
     parser.add_argument('-d', '--detparameters', 
                         help='Detector parameter configuration file', 
                         type = str, required = True)
-    parser.add_argument("--objectives",type=int,default=4,help="Number of Objectives")
     parser.add_argument("--trials",type=int, default=20, help="Number of trials")
     parser.add_argument("--queue",type=str,default="BNL_PanDA_1",help="PanDA queue")
+    parser.add_argument("--concurrency",type=int,default=5,help="Number of concurrent trials to run")
         
     args = parser.parse_args()
     config = ReadJsonFile(args.config)
@@ -262,7 +279,7 @@ if __name__ == "__main__":
     num_trials = args.trials
     exp_name = args.name
     queue = args.queue
-    num_obj = args.objectives
+    max_conc = args.concurrency
 
 
     from ax.service.ax_client import AxClient, ObjectiveProperties
@@ -294,8 +311,8 @@ if __name__ == "__main__":
     # Initialize Ax client
     generation_strategy = GenerationStrategy(
         steps=[
-             GenerationStep(model=Generators.SOBOL, num_trials=5, min_trials_observed=3, max_parallelism=5),
-            GenerationStep(model=Generators.BOTORCH_MODULAR, num_trials=-1, max_parallelism=5),       
+             GenerationStep(model=Generators.SOBOL, num_trials=5, min_trials_observed=3, max_parallelism=max_conc),
+            GenerationStep(model=Generators.BOTORCH_MODULAR, num_trials=-1, max_parallelism=max_conc),       
         ]
     )
     ax_client = AxClient(generation_strategy=generation_strategy)
@@ -307,8 +324,9 @@ if __name__ == "__main__":
         name=exp_name,
         parameters=search_space,
         #objectives={"objective": ObjectiveProperties(minimize=False)}, # I think we want to maximize the acceptance
-        objectives={"obj_acc": ObjectiveProperties(minimize=False),
-                    "obj_piksep":ObjectiveProperties(minimize=False)
+        #threshold based on conversation with Fang Ying
+        objectives={"obj_acc": ObjectiveProperties(minimize=False,threshold=0.6),
+                    "obj_piksep":ObjectiveProperties(minimize=False,threshold=2.7)
                    },
     )
 
@@ -360,6 +378,7 @@ if __name__ == "__main__":
 
 
     panda_idds_runner = PanDAiDDSRunner(**panda_attrs)
+    #job_lib_runner = JobLibRunner(n_jobs=1)
     #Because eta_min and eta_max angles have different combinations of radiator, p_eta_min/max and p
     filtered_global_parameters = selected_global_parameters(global_parameters)
     objective_function = MultiStepsFunction(
@@ -368,6 +387,7 @@ if __name__ == "__main__":
                 "func": objective_function_step_simreco, #objective_function_step_simreco,
                 "job_type": JobType.FUNCTION,
                 "runner": panda_idds_runner,
+                #"runner":job_lib_runner,
                 "return_func_results": False,    # here the outputs are in dataset, so no need to wait for function outputs
                 "with_output_dataset": True,
                 "output_file": "recon_file.root",
@@ -383,6 +403,7 @@ if __name__ == "__main__":
                 "func": objective_function_step_ana,
                 "job_type": JobType.FUNCTION,
                 "runner": panda_idds_runner,
+                #"runner": job_lib_runner,
                 "with_input_datasets": True,
                 # Here the dataset name should be the same dataset name of the previous step.
                 # PanDA-iDDS will get the list of files in the input dataset and create an
@@ -395,6 +416,7 @@ if __name__ == "__main__":
                 "func": objective_function_step_final,
                 "job_type": JobType.FUNCTION,
                 "runner": JobLibRunner(n_jobs=-1),
+                #"runner": job_lib_runner,
                 "parent_result_parameter_name": "ret",      # will add a parameter xyz=<get_parent_results> to the func
             },
         },
@@ -410,7 +432,7 @@ if __name__ == "__main__":
     )
 
     config = {
-        "max_concurrent_trials": 10,
+        "max_concurrent_trials": max_conc,
         "early_stopping_threshold": None,
         "early_stopping_begin_at": 0,
         "restart_from_checkpoint": True,

@@ -9,7 +9,7 @@ from enum import Enum
 import os
 from datetime import datetime
 from .job_state import JobState
-
+from ..utils.timing import FunctionTimer, get_global_timer, time_function
 
 class JobType(Enum):
     """Type of job to run."""
@@ -105,6 +105,29 @@ class Job:
         self.parent_internal_id = None
 
         self.logger = logging.getLogger("Job")
+        self.function_timer = FunctionTimer()
+        #wrap the function with timing decorator if it is a function job
+        if self.job_type == JobType.FUNCTION and self.function:
+            self.function = self._wrap_function_with_timing(self.function)
+
+    #define the _wrap_function_with_timing method
+    def _wrap_function_with_timing(self, func: Callable) -> Callable:
+        """Wrap the function with timing decorator."""
+        function_name = f"{self.job_id}.{func.__name__}" if hasattr(func, '__name__') else f"{self.job_id}.function"
+        return time_function(timer=self.function_timer, function_name=function_name)(func)
+
+    def get_function_times(self) -> Dict[str, Dict[str, Any]]:
+        # Get all the recorded function times
+        return self.function_timer.get_times()
+
+    def complete(self,results:Dict[str,Dict[str,Any]]) -> None:
+        # Complete the job and store results
+        self.logger.info(f"Complete job {self.job_id}")
+        self.state = JobState.COMPLETED
+        self.end_time = datetime.now()
+        #Include the function timing in the results
+        results['function_timings'] = self.get_function_times()
+        self.results = results
 
     def _validate(self):
         """Validate that the job is properly configured."""

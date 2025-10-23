@@ -11,7 +11,7 @@ from itertools import product
 from typing import Dict, Any, Optional, List, Union
 from .job import Job, JobType
 from .job_state import JobState
-
+from ..utils.timing import FunctionTimer, time_function
 
 class MultiStepsFunction(object):
     """
@@ -146,6 +146,8 @@ class MultiStepsJob(Job):
         self.parent_internal_id = None
 
         self.logger = logging.getLogger("MultiStepsJob")
+
+        self.function_timer = FunctionTimer()
 
         self._initialize()
 
@@ -294,6 +296,13 @@ class MultiStepsJob(Job):
             return_func_results as bool
         """
         func = step_objective.get("func", None)
+        """
+        #Here we want to wrap function with timing
+        if func is not None:
+            func = self._wrap_step_function_with_timing(func, step_name)
+            step_objective = step_objective.copy()
+            step_objective["func"] = func
+        """
         script_path = step_objective.get("script_path", None)
         container_image = step_objective.get("container_image", None)
         container_command = step_objective.get("container_command", None)
@@ -473,6 +482,42 @@ class MultiStepsJob(Job):
 
         self.logger.info(f"Job {self.job_id} is initialized: step_jobs: {self.step_jobs}, deps: {self.deps}, final: {self.final}")
         self.logger.info(f"Job {self.job_id} is initialized: global parameters: {self.global_parameters}, global parameter steps: {self.global_parameters_steps}")
+    """
+    def _wrap_step_function_with_timing(self, func, step_name):
+        # Wrap a step function to record its execution time.
+        fn = getattr(func, '__name__', 'callable')
+        function_name = f"{self.job_id}.{step_name}.{fn}"
+        self.logger.debug(f"Timing wrapper applied to {function_name}")
+        return time_function(timer=self.function_timer, function_name=function_name)(func)
+    """
+    def get_function_times(self) -> Dict[str, Dict[str, Any]]:
+        # Timings recorded by wrapped in-process functions
+        all_times = dict(self.function_timer.get_times())
+
+        # Also collect from each sub-job:
+        for step_name, objectives in self.step_jobs.items():
+            for objective, jobs_by_key in objectives.items():
+                for g_param_key, step_job in jobs_by_key.items():
+                    """
+                    # Merge function-level times provided by the sub-job (if any)
+                    step_times = getattr(step_job, "get_function_times", lambda: {})()
+                    for func_name, timing in step_times.items():
+                        #prefixed = f"{self.job_id}.{step_name}.{objective}.{g_param_key}.{func_name}"
+                        prefixed = f"{step_name}.func"
+                        all_times[prefixed] = timing
+                    """
+                    # Fallback: If timing not available use job-level information
+                    #if getattr(step_job, "start_time", None) and getattr(step_job, "end_time", None):
+                    self.logger.debug(f"Collecting timing using job-level information for {step_job.job_id}")
+                    duration = (step_job.end_time - step_job.start_time).total_seconds()
+                    all_times[f"{step_name}.job"] = {
+                        "start_time": step_job.start_time,
+                        "end_time": step_job.end_time,
+                        "duration_seconds": duration,
+                    }
+        self.logger.debug(f"MultiStepsJob {self.job_id} collected function times: {all_times}")
+        return all_times
+        
 
     def get_ready_steps(self) -> list:
         """

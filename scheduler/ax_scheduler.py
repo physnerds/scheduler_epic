@@ -96,6 +96,7 @@ class AxScheduler:
 
         self.early_stopping_threshold = self.config.get("early_stopping_threshold", None)
         self.best_objective_previous = None
+        #self.function_times = {}  # for multi-steps function
         # don't start the early_stopping at the random generation stage
         self.early_stopping_begin_at = self.config.get("early_stopping_begin_at", 0)
 
@@ -407,12 +408,26 @@ class AxScheduler:
                 else:
                     ax_trial.run().add_metric_outcome(metric_name=metric_name, mean=value)
 
+        #Collect the function timing information
+        trial_function_times = {}
+        for job in trial.jobs:
+            job_function_times = job.get_function_times()
+            if job_function_times:
+                trial_function_times.update(job_function_times)
         # Clean up if configured to do so
         if self.cleanup_after_completion:
             self._cleanup_trial(trial)
 
         self.remove_running_trial(trial_index)
-
+        #Update trial_metrics with function timing information
+        self.logger.debug(f"Trial {trial_index} function times: {trial_function_times}")    
+        self.trials_metrics[trial_index] = {
+            "start_time": trial.start_time,
+            "end_time": trial.end_time,
+            "time_used": (trial.end_time - trial.start_time).total_seconds() if trial.start_time and trial.end_time else 0,
+            "function_times": trial_function_times
+        }
+        
     def _cleanup_trial(self, trial: Trial) -> None:
         """
         Clean up files for a completed trial.
@@ -511,11 +526,6 @@ class AxScheduler:
                             # break
                             pass
                     terminated_trials.append(trial_index)
-                    self.trials_metrics[trial_index] = {
-                        "start_time": trial.start_time,
-                        "end_time": trial.end_time,
-                        "time_used": (trial.end_time - trial.start_time).total_seconds(),
-                    }
 
             # Update convergence after trials complete
             if self.is_multi_objective():
@@ -531,8 +541,18 @@ class AxScheduler:
             if terminated_trials:
                 has_terminated_trials = True
 
+            # Remove this block as it's handled in complete_trial:
+            # for trial_index in terminated_trials:
+            #     self.remove_running_trial(trial_index)
+            #     self.trials_metrics[trial_index] = {
+            #         "start_time": trial.start_time,
+            #         "end_time": trial.end_time,
+            #         "time_used": (trial.end_time - trial.start_time).total_seconds(),
+            #     }
+
             for trial_index in terminated_trials:
                 self.remove_running_trial(trial_index)
+                # Only keep the best_objective assignment:
                 self.trials_metrics[trial_index]["best_objective"] = self.best_objective_previous
 
             if has_terminated_trials and self.enable_checkpoint:

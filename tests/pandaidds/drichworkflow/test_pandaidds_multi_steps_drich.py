@@ -52,21 +52,22 @@ global_parameters = {
 
 def selected_global_parameters(global_parameters):
     jobs = []
+    particles_list = global_parameters["particles"]
     for p in global_parameters["p"]:
         if p==15:
-            particles_list = ["pi+"]
+            #particles_list = ["pi+"]
             p_eta_min_list = [1.5,2.0]
             p_eta_max_list = [2.0,2.5]
             radiator_list = [0]
         elif p==45:
-            particles_list = ["kaon+"]
+            #particles_list = ["kaon+"]
             p_eta_min_list = [2.5,3.0]
             p_eta_max_list = [3.0,3.5]
             radiator_list = [1]
         else:
             continue
         for particles in particles_list:
-            for eta_point_x in global_parameters["eta_point_x"]:
+            for eta_point_x in global_parameters["eta_point_x"]:#For now it seems that eta_point_x and eta_point_y do not play in role in simulation but only in final calculation of pandaidds branch
                 for eta_point_y in global_parameters["eta_point_y"]:
                     for p_eta_min in p_eta_min_list:
                         for radiator in radiator_list:
@@ -225,7 +226,6 @@ def objective_function_step_final(*,ret,**parameters):
         photons = [x[0] for x in values]
         angles = [x[1] for x in values]
         err_angles = [x[2] for x in values]
-
         return{
             "avg_acc": sum(acc)/len(acc),
             "avg_photons":sum(photons)/len(photons),
@@ -235,16 +235,22 @@ def objective_function_step_final(*,ret,**parameters):
 
     pi_stats = obj_stats(obj_pi)
     k_stats = obj_stats(obj_kaon)
+    ## Instead of calculating the piksep, we will just calculate the angles separately for the objectives
 
     cher_diff = abs((pi_stats["avg_angles"]-k_stats["avg_angles"])) / 2.0
     avg_photons = (pi_stats["avg_photons"]+k_stats["avg_photons"]) / 2.0
     avg_mae = (pi_stats["avg_mae"]+k_stats["avg_mae"]) / 2.0
     
-    final_piksep = cher_diff*(math.sqrt(avg_photons)) / (avg_mae if avg_mae!=0 else 1.0)
+    #final_piksep = cher_diff*(math.sqrt(avg_photons)) / (avg_mae if avg_mae!=0 else 1.0)
+    final_piangle = pi_stats["avg_angles"]
+    final_kangle = k_stats["avg_angles"]
     final_acc = (pi_stats["avg_acc"]+k_stats["avg_acc"]) / 2.0
-        
+    end_time = time.time()
+    print(f"Final step calculations took {end_time - start_time} seconds.")
     return {"obj_acc": float(final_acc),
-            "obj_piksep": float(final_piksep)
+            #"obj_piksep": float(final_piksep)
+            "obj_piangle": float(final_piangle),
+            "obj_kangle": float(final_kangle)
            }
 
 
@@ -326,7 +332,9 @@ if __name__ == "__main__":
         #objectives={"objective": ObjectiveProperties(minimize=False)}, # I think we want to maximize the acceptance
         #threshold based on conversation with Fang Ying
         objectives={"obj_acc": ObjectiveProperties(minimize=False,threshold=0.6),
-                    "obj_piksep":ObjectiveProperties(minimize=False,threshold=2.7)
+                    #"obj_piksep":ObjectiveProperties(minimize=False,threshold=2.7)
+                    "obj_piangle":ObjectiveProperties(minimize=False,threshold=2.5),
+                    "obj_kangle":ObjectiveProperties(minimize=False,threshold=2.5)
                    },
     )
 

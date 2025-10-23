@@ -79,8 +79,8 @@ def objective_function_torch(num_objs=2, **params):
     x = [params[f"x{i}"] for i in range(len(params))]
     x_tensor = torch.tensor([x], dtype=torch.float32)
     f = dtlz2(x_tensor, m=num_objs)[0]
-    return {f"f{i + 1}": (f[i].item(), 0.0) for i in range(num_objs)}
-
+    ret = {f"f{i + 1}": (float(f[i]), 0.0) for i in range(num_objs)}
+    return {"ret": ret}
 
 def objective_function(num_objs=2, **params):
     import numpy as np
@@ -89,6 +89,11 @@ def objective_function(num_objs=2, **params):
     x_array = np.array([x])  # shape: (1, d)
     f = dtlz2(x_array, m=num_objs)[0]
     return {f"f{i + 1}": (float(f[i]), 0.0) for i in range(num_objs)}
+
+# create a final function that sums the objectives
+def combined_objective_function(ret,num_objs=2, **params):
+    #print(f"combined_objective_function received ret: {ret}")
+    return {f"f{i + 1}": ret[f"f{i + 1}"] for i in range(num_objs)}
 
 
 if __name__ == "__main__":
@@ -152,10 +157,20 @@ if __name__ == "__main__":
                 "job_type": JobType.FUNCTION,
                 "runner": runner
             },
+            "combined": {
+                "func": combined_objective_function,
+                "job_type": JobType.FUNCTION,
+                "runner": runner,
+                "parent_result_parameter_name": "ret",
+            }
         },
-        deps=None,
+        #deps=None,
+        deps={
+            "combined": {"parent": "one_step", "dep_type": "results", "dep_map": "one2one"},
+        },
         global_parameters=global_parameters,
-        global_parameters_steps=["one_step"],
+        global_parameters_steps=["one_step","combined"],
+        final="combined",
     )
 
     config = {
@@ -163,7 +178,7 @@ if __name__ == "__main__":
         "early_stopping_threshold": None,
         "early_stopping_begin_at": 0,
         "restart_from_checkpoint": True,
-        "work_dir": "./work",
+        "work_dir": "./works",
         "checkpoint_name": None,    # will use experiment name
     }
 

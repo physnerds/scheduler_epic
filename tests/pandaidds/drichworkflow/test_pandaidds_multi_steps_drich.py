@@ -200,57 +200,74 @@ def objective_function_step_final(*,ret,**parameters):
 def objective_function_step_final(*,ret,**parameters):
     
     import math
+    from collections import defaultdict
     print(f"step_final global_parameters: {global_parameters}")
     print(f"step_final results :{ret}")
-    obj_pi = []
-    obj_kaon = []
+    obj_pi = defaultdict(list)
+    obj_kaon = defaultdict(list)
     
-    for result_dict in ret.values():
-        for k,v in result_dict.items():
-            if not k.startswith("plus_cher"):
-                continue
-            if k.endswith("pi+"):
-                obj_pi.append(v)
-            elif k.endswith("kaon+"):
-                obj_kaon.append(v)
-
-    def obj_stats(values):
+    def obj_stats_acc(values):
         if not values:
             return{
                 "avg_acc":0,
                 "avg_photons":0,
-                "avg_angles":0,
-                "avg_mae":1.0,
+
             }
         acc = [x[3] for x in values]
-        photons = [x[0] for x in values]
-        angles = [x[1] for x in values]
-        err_angles = [x[2] for x in values]
+        photons = [x[0] for x in values]  
         return{
             "avg_acc": sum(acc)/len(acc),
             "avg_photons":sum(photons)/len(photons),
+        }
+
+    def obj_stats_angle(values):
+        if not values:
+            return{
+                "avg_angles":0,
+                "avg_mae":0.0,
+            }
+        angles = [x[1] for x in values]
+        err_angles = [x[2] for x in values]
+
+        return{
             "avg_angles":sum(angles)/len(angles),
             "avg_mae":sum(err_angles)/len(err_angles),
         }
 
-    pi_stats = obj_stats(obj_pi)
-    k_stats = obj_stats(obj_kaon)
-    ## Instead of calculating the piksep, we will just calculate the angles separately for the objectives
-
-    cher_diff = abs((pi_stats["avg_angles"]-k_stats["avg_angles"])) / 2.0
-    avg_photons = (pi_stats["avg_photons"]+k_stats["avg_photons"]) / 2.0
-    avg_mae = (pi_stats["avg_mae"]+k_stats["avg_mae"]) / 2.0
+    for key_tuple, result_dict in ret.items():
+        key_dict = dict(key_tuple)
+        mom = 0.0
+        for k,v in result_dict.items():
+            if not k.startswith('plus_cher'):
+                continue
+            if k.endswith('pi+'):
+                obj_pi[mom].append(v)
+            if k.endswith('kaon+'):
+                obj_kaon[mom].append(v)
     
-    #final_piksep = cher_diff*(math.sqrt(avg_photons)) / (avg_mae if avg_mae!=0 else 1.0)
-    final_piangle = pi_stats["avg_angles"]
-    final_kangle = k_stats["avg_angles"]
-    final_acc = (pi_stats["avg_acc"]+k_stats["avg_acc"]) / 2.0
-    end_time = time.time()
-    print(f"Final step calculations took {end_time - start_time} seconds.")
+    pi_acc_stats = obj_stats_acc(obj_pi[15]+obj_pi[45])
+    kaon_acc_stats = obj_stats_acc(obj_kaon[15]+obj_kaon[45])
+    pi_ang_low = obj_stats_angle(obj_pi[15])
+    pi_ang_high = obj_stats_angle(obj_pi[45])
+    kaon_ang_low = obj_stats_angle(obj_kaon[15])
+    kaon_ang_high = obj_stats_angle(obj_kaon[45])
+
+    cher_diff_low = abs((pi_ang_low["avg_angles"]-kaon_ang_low["avg_angles"]))
+    cher_diff_high = abs((pi_ang_high["avg_angles"]-kaon_ang_high["avg_angles"]))
+    avg_photons_low = (pi_acc_stats["avg_photons"]+kaon_acc_stats["avg_photons"]) / 2.0
+    avg_photons_high = (pi_acc_stats["avg_photons"]+kaon_acc_stats["avg_photons"]) / 2.0
+    avg_mae_low = (pi_ang_low["avg_mae"]+kaon_ang_low["avg_mae"]) / 2.0
+    avg_mae_high = (pi_ang_high["avg_mae"]+kaon_ang_high["avg_mae"]) / 2.0
+
+    piksep_low = cher_diff_low*(math.sqrt(avg_photons_low)) / (avg_mae_low if avg_mae_low!=0 else 1.0)
+    piksep_high = cher_diff_high*(math.sqrt(avg_photons_high)) / (avg_mae_high if avg_mae_high!=0 else 1.0)
+    final_acc = (pi_acc_stats["avg_acc"]+kaon_acc_stats["avg_acc"]) / 2.0
+
+
+    ## Instead of calculating the piksep, we will just calculate the angles separately for the objectives
     return {"obj_acc": float(final_acc),
-            #"obj_piksep": float(final_piksep)
-            "obj_piangle": float(final_piangle),
-            "obj_kangle": float(final_kangle)
+            "obj_piksep_low": float(piksep_low),
+            "obj_piksep_high": float(piksep_high)
            }
 
 
@@ -333,8 +350,8 @@ if __name__ == "__main__":
         #threshold based on conversation with Fang Ying
         objectives={"obj_acc": ObjectiveProperties(minimize=False,threshold=0.6),
                     #"obj_piksep":ObjectiveProperties(minimize=False,threshold=2.7)
-                    "obj_piangle":ObjectiveProperties(minimize=False,threshold=2.5),
-                    "obj_kangle":ObjectiveProperties(minimize=False,threshold=2.5)
+                    "obj_pisep_low":ObjectiveProperties(minimize=False,threshold=2.5),
+                    "obj_piksep_high":ObjectiveProperties(minimize=False,threshold=2.5)
                    },
     )
 

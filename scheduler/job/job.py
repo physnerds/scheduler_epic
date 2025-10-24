@@ -258,3 +258,9 @@ class Job:
             Dictionary of results
         """
         return self.results
+
+    def cancel(self) -> None:
+        """
+        Cancel the job.
+        """
+        self.runner.cancel_job(self)

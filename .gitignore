@@ -2,6 +2,8 @@
 *fieldmaps
 *.qodo
 
+#Local Stash
+tests/pandaidds/drichworkflow/stash/
 # MkDocs documentation
 /site/
 

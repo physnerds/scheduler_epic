@@ -5,7 +5,7 @@ from itertools import product
 import sys,argparse
 from ProjectUtils.ePICUtils.editxml_local import create_xml
 
-from drich_mobo_ana import run_func_analy
+#from drich_mobo_ana import run_func_analy
 
 from ax.core.parameter_constraint import ParameterConstraint
 from ax.core.parameter import RangeParameter,ParameterType
